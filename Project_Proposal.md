@@ -55,18 +55,18 @@
 
 - 审核界面左右对照展示：原图 | 处理后图
 - 每张图下方显示三项检测分数及系统建议
-- 审核人员逐张或逐工单做出"通过/驳回"决定
-- 驳回时填写驳回原因
+- 审核方式为**逐张审核**：审核人员逐张查看原图、处理后图和检测指标，对每张图片分别执行"通过"或"驳回"操作；只有工单内全部图片均通过后，工单状态才更新为"已通过"。驳回时需要填写驳回原因，工单进入"已驳回"状态，并可重新进入处理流程
 
 ### 2.6 导出归档
 
 审核通过后，一键导出为 ZIP 包：
 
 ```
-WO_20260626_001.zip
-├── original/          # 原始图片
-├── processed/         # 处理后的图片
-└── detection_report.csv   # 检测报告
+WorkOrder_xxx.zip
+├── original/              # 原始图片
+├── processed/             # 处理后的图片
+├── detection_report.csv   # 检测报告
+└── process_log.txt        # 操作日志
 ```
 
 ---
@@ -82,15 +82,16 @@ WO_20260626_001.zip
 | 数据库 | SQLite | 免安装、零配置、单文件，适合桌面小系统 |
 | ORM | ADO.NET（直接 SQL） | 课程考核点，避免引入 EF 增加复杂度 |
 | 图像处理 | 纯 GDI+ / System.Drawing | 课程多媒体处理知识点，无第三方依赖 |
+| 测试方式 | 独立 C# 测试驱动 + 手工回归测试 | 直接调用业务层并核验 SQLite、文件系统和 ZIP 结果，适合本项目的集成式 TDD 验证 |
 
 
 ### 3.2 技术覆盖对照
 
 | 课程技术点 | 系统对应模块 |
 |------------|-------------|
-| WinForm 基本控件 | DataGridView 工单列表、TabControl 流程切换、TreeView 目录、PictureBox 图片预览 |
-| 菜单与对话框设计 | ToolStrip 菜单栏、OpenFileDialog/SaveFileDialog、自定义 MessageBox |
-| 文件操作 | 批量导入复制、ZIP 打包导出、检测报告 CSV 写入 |
+| WinForm 基本控件 | DataGridView 工单列表、TabControl 流程切换、ListBox 图片列表、PictureBox 图片预览 |
+| 对话框与交互设计 | OpenFileDialog 批量导入、MessageBox 反馈结果 |
+| 文件操作 | 批量导入复制、ZIP 打包导出、检测报告 CSV 写入、操作日志 TXT 导出 |
 | 多媒体处理 | 图像换底、缩放、格式转换、缩略图生成 |
 | 图像处理 | 拉普拉斯模糊检测、直方图偏色分析、分辨率检测 |
 | 数据库 | SQLite CRUD、ADO.NET 参数化查询、事务处理 |
@@ -118,23 +119,48 @@ ImageBatchSystem/
 │   ├── DetectionService.cs      # 质量检测算法
 │   ├── BatchProcessService.cs   # 批处理执行
 │   └── ExportService.cs         # ZIP 导出
-├── Data/                  # 数据访问层
-│   ├── DbContext.cs       # SQLite 连接管理
-│   ├── WorkOrderRepo.cs   # 工单 CRUD
-│   ├── ImageItemRepo.cs   # 图片 CRUD
-│   └── DetectionRepo.cs   # 检测结果 CRUD
-├── Forms/                 # 或根目录，UI 层
-│   ├── MainForm.cs        # 主窗体（TabControl 容器）
-│   ├── TabWorkOrders.cs   # Tab1 工单列表
-│   ├── TabCreateOrder.cs  # Tab2 创建工单
-│   ├── TabProcessing.cs   # Tab3 处理执行
-│   ├── TabReview.cs       # Tab4 审核
-│   └── TabExport.cs       # Tab5 导出归档
+├── Repositories/          # 数据访问层
+│   ├── DbContext.cs         # SQLite 连接管理
+│   ├── WorkOrderRepo.cs     # 工单 CRUD
+│   ├── ImageItemRepo.cs     # 图片 CRUD
+│   ├── DetectionRepo.cs     # 检测结果 CRUD
+│   └── ProcessLogRepo.cs    # 操作日志 CRUD
+├── Forms/
+│   └── MainForm.cs          # 主窗体；代码创建五个业务页签及事件处理
+├── Theme.cs                 # 全局配色、字体与控件样式
 ├── Utils/
 │   └── BackgroundChanger.cs  # 换底算法（复用）
+├── libs/
+│   ├── System.Data.SQLite.dll
+│   ├── x64/SQLite.Interop.dll
+│   └── x86/SQLite.Interop.dll
 ├── Program.cs
+├── ImageBatchSystem.csproj
+├── ImageBatchSystem.sln
 └── App.config
 ```
+
+### 4.1.1 图片文件存储目录
+
+系统运行时，所有图片文件存储在应用程序数据目录下，按工单 ID 分子目录管理：
+
+```
+AppData/
+├── database.db                 # SQLite 数据库文件
+└── WorkOrders/
+    └── {WorkOrderId}/
+        ├── original/           # 导入的原始图片
+        ├── processed/          # 批处理后的图片
+        ├── thumbnails/         # 缩略图（审核界面预览用）
+        └── WorkOrder_{Id}.zip  # 审核通过后生成的归档文件
+```
+
+- `original/` — 工单创建时导入的原始图片，不受后续处理影响
+- `processed/` — 批处理产出的图片（换底后、缩放后或格式转换后）
+- `thumbnails/` — 审核界面左右对照展示用的缩略图
+- `WorkOrder_{Id}.zip` — 由导出服务直接生成，包含原图、处理图、检测报告和操作日志
+
+数据库文件 `database.db` 与 `WorkOrders/` 平级存放，便于备份和迁移。
 
 ### 4.2 分层架构图
 
@@ -146,7 +172,7 @@ ImageBatchSystem/
 │      业务逻辑层 (Services/)          │
 │  检测/批处理/导出/状态管理            │
 ├─────────────────────────────────────┤
-│      数据访问层 (Data/)              │
+│      数据访问层 (Repositories/)       │
 │  ADO.NET → SQLite CRUD             │
 ├─────────────────────────────────────┤
 │      数据层 (SQLite 数据库)          │
@@ -180,6 +206,9 @@ ImageBatchSystem/
 | OriginalPath | TEXT | 导入后存储路径 |
 | ProcessedPath | TEXT | 处理后存储路径 |
 | ProcessStatus | TEXT | 处理状态（Pending/Processing/Done/Failed） |
+| ReviewStatus | TEXT | 审核状态（Pending/Approved/Rejected） |
+| ReviewComment | TEXT | 审核意见或驳回原因 |
+| ReviewedAt | DATETIME | 审核时间 |
 
 **DetectionResults（检测结果表）**
 
@@ -205,6 +234,7 @@ ImageBatchSystem/
 |------|------|------|
 | Id | INTEGER PK | 自增主键 |
 | WorkOrderId | INTEGER FK | 关联工单 |
+| ImageId | INTEGER FK | 关联图片，可为空；工单级操作时为空 |
 | Action | TEXT NOT NULL | 操作描述 |
 | Operator | TEXT | 操作人（人工审核填） |
 | RejectReason | TEXT | 驳回原因 |
@@ -251,9 +281,10 @@ MainForm
 | 开发工具 | Visual Studio 2022 |
 | .NET 版本 | .NET Framework 4.8 |
 | 语言 | C# 7.3+ |
-| 数据库 | SQLite 3.x（System.Data.SQLite NuGet 包） |
+| 数据库 | SQLite 3.x（项目 `libs/` 中随源码提供 System.Data.SQLite） |
 | 版本控制 | Git |
 | AI 辅助工具 | Claude Code（RDD + TDD 开发模式） |
+| 外部依赖 | `libs/` 中自包含 System.Data.SQLite + SQLite.Interop，无需额外 NuGet 还原 |
 
 ---
 
