@@ -25,10 +25,13 @@ namespace ImageBatchSystem.Services
 
         public static void Transition(int workOrderId, string newStatus)
         {
+            // 始终以数据库中的最新状态作为判断依据，避免界面缓存状态与数据库不一致。
             var wo = WorkOrderRepo.GetById(workOrderId);
             if (wo == null)
                 throw new ArgumentException(string.Format("工单 {0} 不存在", workOrderId));
 
+            // 状态机白名单校验：只有Transitions中明确声明的跳转才允许执行。
+            // 例如Draft不能直接变为Approved，Archived也不能再次进入处理流程。
             if (!Transitions.ContainsKey(wo.Status) ||
                 !Transitions[wo.Status].Contains(newStatus))
             {
@@ -36,6 +39,7 @@ namespace ImageBatchSystem.Services
                     string.Format("非法状态跳转: {0} → {1}", wo.Status, newStatus));
             }
 
+            // 校验通过后先持久化新状态，再写入一条可追踪的状态变更日志。
             WorkOrderRepo.UpdateStatus(workOrderId, newStatus);
 
             ProcessLogRepo.Insert(new ProcessLog
@@ -87,6 +91,7 @@ namespace ImageBatchSystem.Services
 
         public static void Approve(int workOrderId)
         {
+            // 工单通过以数据库中的逐图审核结果为准，不能只依赖界面成功提示。
             if (!ImageItemRepo.AllImagesApproved(workOrderId))
                 throw new InvalidOperationException("工单内还有图片未审核通过，无法通过工单");
             Transition(workOrderId, "Approved");

@@ -10,6 +10,7 @@ namespace ImageBatchSystem.Services
     {
         public static string Export(int workOrderId)
         {
+            // 导出前再次确认工单存在，避免为无效ID建立孤立归档目录。
             var wo = WorkOrderRepo.GetById(workOrderId);
             if (wo == null)
                 throw new ArgumentException(string.Format("工单 {0} 不存在", workOrderId));
@@ -19,21 +20,25 @@ namespace ImageBatchSystem.Services
             string originalDir = BatchProcessService.GetOriginalDir(workOrderId);
             string processedDir = BatchProcessService.GetProcessedDir(workOrderId);
 
+            // archive是一次性临时目录；先清理旧目录，防止混入历史文件。
             if (Directory.Exists(archiveDir)) Directory.Delete(archiveDir, true);
             Directory.CreateDirectory(archiveDir);
 
+            // 原图和处理图分目录保存，便于归档后追溯并对照处理效果。
             if (Directory.Exists(originalDir))
                 CopyDirectory(originalDir, Path.Combine(archiveDir, "original"));
 
             if (Directory.Exists(processedDir))
                 CopyDirectory(processedDir, Path.Combine(archiveDir, "processed"));
 
+            // 将数据库中的检测结果和操作日志转换为可独立查看的文件。
             GenerateCsvReport(workOrderId, Path.Combine(archiveDir, "detection_report.csv"));
             GenerateProcessLog(workOrderId, Path.Combine(archiveDir, "process_log.txt"));
 
             string zipName = string.Format("WorkOrder_{0}.zip", workOrderId);
             string zipPath = Path.Combine(baseDir, zipName);
             if (File.Exists(zipPath)) File.Delete(zipPath);
+            // 压缩完成后清理临时目录，只保留最终WorkOrder_{Id}.zip。
             ZipFile.CreateFromDirectory(archiveDir, zipPath, CompressionLevel.Optimal, false);
 
             Directory.Delete(archiveDir, true);

@@ -107,6 +107,7 @@ namespace ImageBatchSystem.Repositories
             using (var conn = DbContext.GetConnection())
             {
                 conn.Open();
+                // 关联表删除位于同一事务中，任一步失败都不能留下半删除状态。
                 using (var transaction = conn.BeginTransaction())
                 {
                     try
@@ -114,6 +115,8 @@ namespace ImageBatchSystem.Repositories
                         using (var cmd = conn.CreateCommand())
                         {
                             cmd.Transaction = transaction;
+                            // 按依赖顺序删除：检测结果和日志→图片→工单主记录。
+                            // @id使用参数绑定，避免把外部数据直接拼接到SQL中。
                             cmd.CommandText = @"
                                 DELETE FROM DetectionResults
                                 WHERE ImageId IN (SELECT Id FROM Images WHERE WorkOrderId = @id);
@@ -123,10 +126,12 @@ namespace ImageBatchSystem.Repositories
                             cmd.Parameters.AddWithValue("@id", id);
                             cmd.ExecuteNonQuery();
                         }
+                        // 所有SQL执行成功后一次性提交。
                         transaction.Commit();
                     }
                     catch
                     {
+                        // 出现异常时回滚全部删除操作，并把异常交给上层处理。
                         transaction.Rollback();
                         throw;
                     }

@@ -19,25 +19,30 @@ namespace ImageBatchSystem.Services
 
         public void Execute(Action<int, int> progressCallback = null)
         {
+            // 一次读取当前工单的全部图片，并为处理结果建立独立输出目录。
             var images = ImageItemRepo.GetByWorkOrderId(_workOrder.Id);
             string processedDir = GetProcessedDir(_workOrder.Id);
             Directory.CreateDirectory(processedDir);
 
+            // 工单级参数只解析一次；质量检测器复用同一组目标宽高。
             var opts = ParseOptions();
             var detectionService = new DetectionService(_workOrder.TargetWidth, _workOrder.TargetHeight);
 
             for (int i = 0; i < images.Count; i++)
             {
                 var img = images[i];
+                // 回调只传递进度数据，界面层决定如何更新进度条和提示文字。
                 if (progressCallback != null)
                     progressCallback(i + 1, images.Count);
 
                 try
                 {
+                    // 先标记为Processing，使数据库能够反映当前处理进度。
                     ImageItemRepo.UpdateProcessStatus(img.Id, "Processing");
 
                     using (var bmp = new Bitmap(img.OriginalPath))
                     {
+                        // current指向当前处理阶段的位图；产生新位图后释放旧中间对象。
                         Bitmap current = bmp;
 
                         // 步骤 1: 换底色
@@ -71,6 +76,7 @@ namespace ImageBatchSystem.Services
 
                         current.Save(outPath, GetImageFormat(ext));
 
+                        // 保存成功后回写真实输出路径，审核和导出均读取该字段。
                         ImageItemRepo.UpdateProcessedPath(img.Id, outPath);
 
                         if (current != bmp) current.Dispose();
@@ -80,10 +86,12 @@ namespace ImageBatchSystem.Services
                         DetectionRepo.Insert(result);
                     }
 
+                    // 图像处理、保存和检测全部完成后，才将图片标记为Done。
                     ImageItemRepo.UpdateProcessStatus(img.Id, "Done");
                 }
                 catch (Exception ex)
                 {
+                    // 单张图片失败时记录失败状态和原因，避免异常静默丢失。
                     ImageItemRepo.UpdateProcessStatus(img.Id, "Failed");
                     ProcessLogRepo.Insert(new Models.ProcessLog
                     {

@@ -380,19 +380,26 @@ namespace ImageBatchSystem.Forms
 
         private void ReviewCurrentImage(bool approved)
         {
+            // 没有有效图片或工单时直接返回，避免对空选择执行数据库更新。
             if (_currentReviewImageId == 0) return;
             object v = _cmbReviewOrder.SelectedValue; if (!(v is int)) return; int oId = (int)v;
             string st = approved ? "Approved" : "Rejected", cmt = null;
+            // 驳回原因属于必填业务数据，空原因不会进入数据库。
             if (!approved) { cmt = _txtRejectReason.Text.Trim(); if (string.IsNullOrEmpty(cmt)) { MessageBox.Show("请填写驳回原因"); return; } }
+            // 先保存当前图片的审核结论，再根据全部图片状态决定工单下一步。
             ImageItemRepo.UpdateReview(_currentReviewImageId, st, cmt);
             ProcessLogRepo.Insert(new ProcessLog { WorkOrderId = oId, ImageId = _currentReviewImageId, Action = approved ? "图片审核通过" : string.Format("图片审核驳回: {0}", cmt), Operator = "审核员", RejectReason = cmt, CreatedAt = DateTime.Now });
+            // 任意图片被驳回时，整个工单返回Rejected并重置为可重新处理状态。
             if (!approved) { WorkOrderService.Reject(oId, cmt, "审核员"); _statusLabel.Text = string.Format("工单 #{0} 已驳回", oId); RefreshAll(); _currentReviewImageId = 0; _txtRejectReason.Clear(); MessageBox.Show("该图片已驳回，工单返回处理中。"); }
+            // 只有所有图片都通过，工单才进入Approved并出现在导出列表。
             else if (ImageItemRepo.AllImagesApproved(oId)) { WorkOrderService.Approve(oId); _statusLabel.Text = string.Format("工单 #{0} 审核全部通过", oId); RefreshAll(); _currentReviewImageId = 0; _txtRejectReason.Clear(); MessageBox.Show("所有图片审核通过，工单已通过！"); }
             else
             {
                 _statusLabel.Text = string.Format("图片 #{0} 审核通过，继续审核剩余图片", _currentReviewImageId);
+                // 重新查询最新审核状态，定位第一张尚未通过的图片。
                 var images = ImageItemRepo.GetByWorkOrderId(oId);
                 int nextIndex = images.FindIndex(i => i.ReviewStatus != "Approved");
+                // 重新绑定并改变SelectedIndex，触发界面显示下一张图片。
                 _lstReviewImages.DataSource = null;
                 _lstReviewImages.DisplayMember = "FileName";
                 _lstReviewImages.ValueMember = "Id";

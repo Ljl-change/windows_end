@@ -24,13 +24,16 @@ namespace ImageBatchSystem.Services
         {
             using (var bmp = new Bitmap(imagePath))
             {
+                // 每次检测创建独立结果对象，并绑定当前图片ID，便于写入检测结果表。
                 var result = new DetectionResult();
                 result.ImageId = imageId;
                 result.DetectedAt = DateTime.Now;
 
+                // 拉普拉斯方差越低，图像越可能模糊；分数达到阈值才通过。
                 result.BlurScore = ComputeLaplacianVariance(bmp);
                 result.BlurPassed = result.BlurScore >= BlurThreshold;
 
+                // 目标尺寸为0表示该方向不限制，否则实际宽高必须达到目标值。
                 result.ResolutionW = bmp.Width;
                 result.ResolutionH = bmp.Height;
                 result.ResPassed = (_targetWidth <= 0 || bmp.Width >= _targetWidth) &&
@@ -41,10 +44,12 @@ namespace ImageBatchSystem.Services
                 result.ColorBiasR = rBias;
                 result.ColorBiasG = gBias;
                 result.ColorBiasB = bBias;
+                // 比较最大、最小通道偏差的跨度，判断颜色是否明显失衡。
                 double maxBias = Math.Max(rBias, Math.Max(gBias, bBias));
                 double minBias = Math.Min(rBias, Math.Min(gBias, bBias));
                 result.ColorPassed = (maxBias - minBias) <= ColorBiasThreshold;
 
+                // 三项检测全部通过才给出建议通过，最终决定仍由人工审核完成。
                 result.SuggestPass = result.BlurPassed && result.ResPassed && result.ColorPassed;
 
                 return result;
@@ -55,6 +60,7 @@ namespace ImageBatchSystem.Services
         {
             int w = bmp.Width, h = bmp.Height;
             var rect = new Rectangle(0, 0, w, h);
+            // LockBits一次性读取24位BGR像素，避免循环中频繁调用GetPixel。
             BitmapData data = bmp.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
             int stride = data.Stride;
             byte[] pixels = new byte[stride * h];
@@ -89,6 +95,7 @@ namespace ImageBatchSystem.Services
         {
             int w = bmp.Width, h = bmp.Height;
             var rect = new Rectangle(0, 0, w, h);
+            // LockBits一次性读取24位BGR像素，避免循环中频繁调用GetPixel。
             BitmapData data = bmp.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
             int stride = data.Stride;
             byte[] pixels = new byte[stride * h];
@@ -101,6 +108,7 @@ namespace ImageBatchSystem.Services
             {
                 for (int x = 0; x < w; x++)
                 {
+                    // Format24bppRgb在内存中的通道顺序为B、G、R。
                     int p = y * stride + x * 3;
                     bSum += pixels[p];
                     gSum += pixels[p + 1];
