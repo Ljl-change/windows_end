@@ -1,0 +1,19 @@
+# Visual Studio
+.vs/
+**/.vs/
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.vsidx
+
+# build/test
+TestResults/
+*.pdb
+*.cache
+
+# OS
+.DS_Store
+Thumbs.db

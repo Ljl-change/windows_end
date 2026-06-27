@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI生成代码的人机审核报告</title>
+  <style>
+    :root {
+      --ink: #17201d;
+      --muted: #63706b;
+      --paper: #f7f3e9;
+      --surface: #fffdf7;
+      --green: #174f3d;
+      --green-soft: #dfece5;
+      --red: #a63d2f;
+      --red-soft: #f5e3dc;
+      --gold: #c8973e;
+      --line: #d9d3c5;
+      --code: #18221f;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 8%, rgba(200,151,62,.16), transparent 23rem),
+        linear-gradient(90deg, rgba(23,79,61,.035) 1px, transparent 1px),
+        linear-gradient(rgba(23,79,61,.035) 1px, transparent 1px),
+        var(--paper);
+      background-size: auto, 24px 24px, 24px 24px, auto;
+      font-family: "Noto Serif SC", "Source Han Serif SC", "STSong", serif;
+      line-height: 1.75;
+    }
+
+    .toolbar {
+      position: fixed;
+      right: 24px;
+      top: 24px;
+      z-index: 20;
+      display: flex;
+      gap: 10px;
+    }
+
+    .toolbar button {
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 999px;
+      padding: 10px 18px;
+      color: #fff;
+      background: var(--green);
+      box-shadow: 0 8px 24px rgba(23,79,61,.2);
+      cursor: pointer;
+      font: 600 14px "Microsoft YaHei", sans-serif;
+    }
+
+    .toolbar button:hover { transform: translateY(-2px); }
+
+    .report {
+      width: min(1060px, calc(100% - 40px));
+      margin: 38px auto 80px;
+      background: var(--surface);
+      box-shadow: 0 24px 70px rgba(38,44,39,.14);
+      border: 1px solid rgba(23,79,61,.12);
+    }
+
+    header {
+      position: relative;
+      overflow: hidden;
+      min-height: 410px;
+      padding: 76px 78px 62px;
+      color: #fff;
+      background: var(--green);
+    }
+
+    header::before {
+      content: "REVIEW";
+      position: absolute;
+      right: -22px;
+      bottom: -66px;
+      color: rgba(255,255,255,.055);
+      font: 900 150px Georgia, serif;
+      letter-spacing: -.06em;
+    }
+
+    header::after {
+      content: "";
+      position: absolute;
+      width: 250px;
+      height: 250px;
+      right: 80px;
+      top: -150px;
+      border: 1px solid rgba(255,255,255,.24);
+      transform: rotate(45deg);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 38px;
+      color: #e8d6a8;
+      font: 700 13px "Microsoft YaHei", sans-serif;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 42px;
+      height: 2px;
+      background: var(--gold);
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      font-size: clamp(40px, 6vw, 70px);
+      line-height: 1.12;
+      letter-spacing: -.035em;
+      font-weight: 800;
+    }
+
+    .subtitle {
+      max-width: 650px;
+      margin: 24px 0 50px;
+      color: rgba(255,255,255,.72);
+      font-size: 17px;
+    }
+
+    .meta {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.12);
+    }
+
+    .meta-item {
+      min-height: 74px;
+      padding: 13px 16px;
+      background: rgba(11,42,32,.42);
+    }
+
+    .meta-label {
+      display: block;
+      color: rgba(255,255,255,.5);
+      font: 12px "Microsoft YaHei", sans-serif;
+    }
+
+    .editable {
+      display: block;
+      min-width: 72px;
+      margin-top: 5px;
+      outline: none;
+      border-bottom: 1px dashed rgba(255,255,255,.35);
+      font-weight: 700;
+    }
+
+    main { padding: 56px 78px 70px; }
+
+    section { margin-top: 66px; }
+    section:first-child { margin-top: 0; }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      align-items: start;
+      gap: 22px;
+      margin-bottom: 28px;
+    }
+
+    .section-no {
+      color: var(--gold);
+      font: italic 700 42px Georgia, serif;
+      line-height: 1;
+    }
+
+    h2 {
+      margin: 0 0 7px;
+      color: var(--green);
+      font-size: 28px;
+      line-height: 1.25;
+    }
+
+    .section-kicker {
+      margin: 0;
+      color: var(--muted);
+      font-family: "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+    }
+
+    .lead {
+      padding: 24px 28px;
+      border-left: 4px solid var(--gold);
+      background: #fbf6e9;
+      font-size: 17px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      margin: 32px 0 12px;
+      counter-reset: flow;
+    }
+
+    .flow div {
+      position: relative;
+      padding: 14px 8px;
+      text-align: center;
+      color: var(--green);
+      border-top: 2px solid var(--green);
+      font: 700 14px "Microsoft YaHei", sans-serif;
+    }
+
+    .flow div::before {
+      counter-increment: flow;
+      content: counter(flow);
+      display: block;
+      width: 27px;
+      height: 27px;
+      margin: -29px auto 10px;
+      color: #fff;
+      background: var(--green);
+      border: 5px solid var(--surface);
+      border-radius: 50%;
+      line-height: 27px;
+    }
+
+    .code-card {
+      overflow: hidden;
+      margin: 26px 0;
+      border-radius: 5px;
+      box-shadow: 0 14px 30px rgba(24,34,31,.13);
+    }
+
+    .code-title {
+      display: flex;
+      justify-content: space-between;
+      padding: 11px 17px;
+      color: #ced9d4;
+      background: #0f1714;
+      font: 12px Consolas, monospace;
+    }
+
+    .tag {
+      padding: 2px 8px;
+      color: #ffd9d2;
+      background: rgba(166,61,47,.35);
+      border-radius: 999px;
+    }
+
+    .tag.fixed {
+      color: #d9f3e4;
+      background: rgba(52,143,101,.35);
+    }
+
+    pre {
+      margin: 0;
+      padding: 22px;
+      overflow-x: auto;
+      color: #e4eee9;
+      background: var(--code);
+      font: 13px/1.7 Consolas, "Courier New", monospace;
+      tab-size: 4;
+    }
+
+    .kw { color: #e4b86a; }
+    .str { color: #a8d7b5; }
+    .comment { color: #82918a; font-style: italic; }
+    .bad { color: #ff9f91; }
+    .good { color: #85d8aa; }
+
+    .finding-grid {
+      display: grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap: 18px;
+      margin-top: 24px;
+    }
+
+    .finding {
+      padding: 24px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .finding.critical { border-top: 4px solid var(--red); }
+    .finding.note { border-top: 4px solid var(--gold); }
+
+    .finding h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+
+    .severity {
+      display: inline-block;
+      margin-bottom: 12px;
+      padding: 3px 9px;
+      color: var(--red);
+      background: var(--red-soft);
+      font: 700 11px "Microsoft YaHei", sans-serif;
+      letter-spacing: .08em;
+    }
+
+    .evidence {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin: 26px 0;
+    }
+
+    .metric {
+      padding: 18px;
+      color: var(--green);
+      background: var(--green-soft);
+      border-bottom: 3px solid var(--green);
+    }
+
+    .metric strong {
+      display: block;
+      font: 800 28px Georgia, serif;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font: 13px "Microsoft YaHei", sans-serif;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 24px 0;
+      font-family: "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 14px 15px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--line);
+    }
+
+    th {
+      color: #fff;
+      background: var(--green);
+      font-weight: 700;
+    }
+
+    tr:nth-child(even) td { background: #f7f8f4; }
+
+    .checklist {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin: 24px 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .checklist li {
+      position: relative;
+      padding: 15px 16px 15px 46px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .checklist li::before {
+      content: "✓";
+      position: absolute;
+      left: 16px;
+      top: 14px;
+      width: 22px;
+      height: 22px;
+      color: #fff;
+      background: var(--green);
+      border-radius: 50%;
+      text-align: center;
+      line-height: 22px;
+      font-family: sans-serif;
+    }
+
+    .reflection {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      margin-top: 28px;
+      background: var(--line);
+      border: 1px solid var(--line);
+    }
+
+    .reflection article {
+      padding: 28px;
+      background: #fff;
+    }
+
+    .reflection h3 {
+      margin: 0 0 12px;
+      color: var(--green);
+    }
+
+    .reflection ul { margin: 0; padding-left: 20px; }
+
+    .caution {
+      margin-top: 20px;
+      padding: 26px 30px;
+      color: #fff;
+      background: var(--red);
+    }
+
+    .caution h3 { margin: 0 0 8px; }
+    .caution p { margin: 0; color: rgba(255,255,255,.84); }
+
+    .verdict {
+      position: relative;
+      margin-top: 62px;
+      padding: 40px;
+      border: 2px solid var(--green);
+      background: linear-gradient(135deg, #fff 70%, var(--green-soft));
+    }
+
+    .verdict::before {
+      content: "人工复核结论";
+      position: absolute;
+      top: -15px;
+      left: 28px;
+      padding: 3px 13px;
+      color: #fff;
+      background: var(--green);
+      font: 700 13px "Microsoft YaHei", sans-serif;
+    }
+
+    .verdict p {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    footer {
+      display: flex;
+      justify-content: space-between;
+      padding: 20px 78px;
+      color: rgba(255,255,255,.62);
+      background: #10241d;
+      font: 12px "Microsoft YaHei", sans-serif;
+    }
+
+    @media (max-width: 760px) {
+      header, main { padding-left: 28px; padding-right: 28px; }
+      .meta, .finding-grid, .reflection, .checklist { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; gap: 18px; }
+      .flow div { border-top: 0; border-left: 2px solid var(--green); text-align: left; padding-left: 28px; }
+      .flow div::before { display: inline-block; margin: 0 12px 0 -43px; }
+      .evidence { grid-template-columns: 1fr; }
+      footer { padding: 20px 28px; }
+    }
+
+    @media print {
+      @page { size: A4; margin: 13mm; }
+      body { background: #fff; }
+      .toolbar { display: none; }
+      .report {
+        width: 100%;
+        margin: 0;
+        border: 0;
+        box-shadow: none;
+      }
+      header { min-height: 0; padding: 38px 42px; }
+      h1 { font-size: 38px; }
+      .subtitle { margin-bottom: 28px; }
+      main { padding: 34px 42px; }
+      section { margin-top: 42px; break-inside: avoid; }
+      .code-card, .finding, table, .verdict { break-inside: avoid; }
+      pre { white-space: pre-wrap; font-size: 10px; }
+      footer { padding: 14px 42px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button onclick="window.print()">打印 / 导出 PDF</button>
+  </div>
+
+  <article class="report">
+    <header>
+      <div class="eyebrow">Human-in-the-loop · Code Review 02</div>
+      <h1>AI生成代码的<br>人机审核报告</h1>
+      <p class="subtitle">以“图像批处理工单审核系统”为对象，对 Claude Code 协助生成的审核流程进行人工复核、缺陷定位与修正验证。</p>
+      <div class="meta">
+        <div class="meta-item"><span class="meta-label">课程名称</span><span class="editable" contenteditable="true">点击填写</span></div>
+        <div class="meta-item"><span class="meta-label">姓名</span><span class="editable" contenteditable="true">点击填写</span></div>
+        <div class="meta-item"><span class="meta-label">学号</span><span class="editable" contenteditable="true">点击填写</span></div>
+        <div class="meta-item"><span class="meta-label">审核日期</span><span class="editable" contenteditable="true">2026-06-27</span></div>
+      </div>
+    </header>
+
+    <main>
+      <section>
+        <div class="section-head">
+          <div class="section-no">01</div>
+          <div>
+            <h2>审查对象与功能背景</h2>
+            <p class="section-kicker">选取真实业务链路，而非孤立语法片段</p>
+          </div>
+        </div>
+        <p class="lead">
+          本次选取 Claude Code 协助生成的 <strong>逐张图片审核与工单状态流转代码</strong>。该代码位于
+          <code>MainForm.cs</code> 的 <code>ReviewCurrentImage(bool approved)</code> 方法中，负责记录单张图片的审核结果；
+          当工单内全部图片通过后，将工单状态由 <code>PendingReview</code> 更新为 <code>Approved</code>，使其进入“导出归档”列表。
+        </p>
+        <div class="flow" aria-label="业务流程">
+          <div>选择工单</div>
+          <div>逐张审核</div>
+          <div>全量校验</div>
+          <div>状态变更</div>
+          <div>导出归档</div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div class="section-no">02</div>
+          <div>
+            <h2>AI生成的原始代码</h2>
+            <p class="section-kicker">代码能够运行，但用户交互状态没有同步推进</p>
+          </div>
+        </div>
+
+        <div class="code-card">
+          <div class="code-title">
+            <span>MainForm.cs · 原始审核分支</span>
+            <span class="tag">存在逻辑缺陷</span>
+          </div>
+          <pre><code><span class="kw">else if</span> (ImageItemRepo.AllImagesApproved(orderId))
+{
+    WorkOrderService.Approve(orderId);
+    _statusLabel.Text = <span class="str">"工单审核全部通过"</span>;
+    RefreshAll();
+}
+<span class="kw">else</span>
+{
+    _statusLabel.Text = <span class="str">"当前图片审核通过，继续审核剩余图片"</span>;
+    <span class="bad">LoadReviewImage();</span>
+}</code></pre>
+        </div>
+
+        <p>
+          从局部看，这段代码的判断顺序合理：先更新当前图片，再检查全部图片是否通过。然而，
+          <code>LoadReviewImage()</code> 只会重新加载当前选中的图片，并不会把选中项移动到下一张待审核图片。
+          因此，用户连续点击“通过”时，可能反复审核同一张图片。
+        </p>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div class="section-no">03</div>
+          <div>
+            <h2>人工审查发现</h2>
+            <p class="section-kicker">结合源代码、数据库状态和实际现象交叉验证</p>
+          </div>
+        </div>
+
+        <div class="finding-grid">
+          <article class="finding critical">
+            <span class="severity">主要问题 · 逻辑错误</span>
+            <h3>审核完成的视觉反馈与真实数据不一致</h3>
+            <p>
+              界面提示“继续审核”，但仍停留在原图片。重复点击只会重复执行同一图片的
+              <code>UPDATE</code>，其他图片保持 <code>Pending</code>。由于
+              <code>AllImagesApproved()</code> 始终返回 <code>false</code>，工单不会变为
+              <code>Approved</code>，自然无法出现在导出列表。
+            </p>
+          </article>
+          <article class="finding note">
+            <span class="severity">次要问题 · 可靠性隐患</span>
+            <h3>界面刷新后审核列表可能不主动加载</h3>
+            <p>
+              刷新工单下拉框时，为防止事件重复触发使用了
+              <code>_suppressComboEvents</code>。但解除抑制后没有主动调用
+              <code>LoadReviewOrder()</code>，只有一个工单时可能出现下拉框已有内容、图片列表却为空的情况。
+            </p>
+          </article>
+        </div>
+
+        <div class="evidence">
+          <div class="metric"><strong>9</strong><span>数据库中的图片总数</span></div>
+          <div class="metric"><strong>2</strong><span>实际 Approved 图片</span></div>
+          <div class="metric"><strong>7</strong><span>仍为 Pending 的图片</span></div>
+        </div>
+
+        <table>
+          <thead>
+            <tr><th>审查维度</th><th>结论</th><th>影响</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>业务逻辑</td><td>存在错误</td><td>工单长期停留在 PendingReview，无法归档</td></tr>
+            <tr><td>数据一致性</td><td>数据库本身更新正常</td><td>问题来自 UI 选择状态未推进，而非 SQL 失败</td></tr>
+            <tr><td>SQL 安全</td><td>未发现注入风险</td><td>仓储层使用参数化查询，没有拼接用户输入</td></tr>
+            <tr><td>可用性</td><td>存在误导</td><td>用户容易把重复点击当前图片误认为完成全部审核</td></tr>
+            <tr><td>资源管理</td><td>另有改进空间</td><td>Image.FromFile 加载的旧图片未及时 Dispose，可能锁定文件</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div class="section-no">04</div>
+          <div>
+            <h2>人工修改方案</h2>
+            <p class="section-kicker">保持状态机不变，仅修正界面推进与刷新行为</p>
+          </div>
+        </div>
+
+        <div class="code-card">
+          <div class="code-title">
+            <span>MainForm.cs · 修正后的审核分支</span>
+            <span class="tag fixed">已人工修正</span>
+          </div>
+          <pre><code><span class="kw">else</span>
+{
+    _statusLabel.Text = <span class="str">"当前图片审核通过，继续审核剩余图片"</span>;
+
+    <span class="comment">// 从数据库重新取得状态，选择下一张未通过的图片</span>
+    <span class="kw">var</span> nextImage = ImageItemRepo.GetByWorkOrderId(orderId)
+        .FirstOrDefault(i =&gt; i.ReviewStatus != <span class="str">"Approved"</span>);
+
+    <span class="kw">if</span> (nextImage != <span class="kw">null</span>)
+        <span class="good">_lstReviewImages.SelectedValue = nextImage.Id;</span>
+}</code></pre>
+        </div>
+
+        <div class="code-card">
+          <div class="code-title">
+            <span>MainForm.cs · 修正后的列表刷新</span>
+            <span class="tag fixed">同步修正</span>
+          </div>
+          <pre><code>_cmbReviewOrder.DataSource = list;
+_suppressComboEvents = <span class="kw">false</span>;
+
+<span class="kw">if</span> (list.Count &gt; 0)
+    <span class="good">LoadReviewOrder();</span>
+<span class="kw">else</span>
+{
+    _lstReviewImages.DataSource = <span class="kw">null</span>;
+    _currentReviewImageId = 0;
+    _picOriginal.Image = _picProcessed.Image = <span class="kw">null</span>;
+    _dgvDetection.DataSource = <span class="kw">null</span>;
+}</code></pre>
+        </div>
+
+        <table>
+          <thead>
+            <tr><th>修改内容</th><th>修改原因</th><th>预期结果</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>查询下一张非 Approved 图片</td><td>避免依赖已过期的界面对象状态</td><td>每次通过后自动推进</td></tr>
+            <tr><td>设置 ListBox.SelectedValue</td><td>利用已有 SelectedIndexChanged 事件加载图片</td><td>减少重复代码，保持原结构</td></tr>
+            <tr><td>刷新后主动 LoadReviewOrder</td><td>事件抑制期间不会自动加载</td><td>进入审核页即可看到图片</td></tr>
+            <tr><td>无待审核工单时清空控件</td><td>防止残留上一个工单的信息</td><td>界面状态与数据库一致</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div class="section-no">05</div>
+          <div>
+            <h2>验证过程与结果</h2>
+            <p class="section-kicker">不是“看起来正确”，而是以证据确认修改</p>
+          </div>
+        </div>
+
+        <ul class="checklist">
+          <li>查询 SQLite，确认问题发生时工单状态为 PendingReview</li>
+          <li>确认 9 张图片中仅 2 张 Approved、7 张 Pending</li>
+          <li>核对导出列表只筛选 Status = Approved 的工单</li>
+          <li>使用 .NET Framework MSBuild 17.14 重新编译成功</li>
+        </ul>
+        <p>
+          修正后的流程为：点击“通过” → 当前图片写入 <code>Approved</code> → 自动选择下一张未审核图片 →
+          最后一张通过后调用 <code>WorkOrderService.Approve()</code> → 工单进入导出列表。
+          该修改没有绕过原状态机，也没有直接篡改工单状态，因此保持了业务规则的一致性。
+        </p>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div class="section-no">06</div>
+          <div>
+            <h2>对 AI 辅助编程的认识</h2>
+            <p class="section-kicker">AI 提升产出速度，但不能替代业务验证责任</p>
+          </div>
+        </div>
+
+        <div class="reflection">
+          <article>
+            <h3>优势</h3>
+            <ul>
+              <li>能够快速搭建 WinForms、Repository、Service 等完整分层结构。</li>
+              <li>擅长生成重复性较强的 CRUD、控件初始化和状态映射代码。</li>
+              <li>在明确指出现象后，可以快速追踪调用链并提出局部修正方案。</li>
+              <li>能辅助补充注释、异常处理和测试思路，降低初始开发成本。</li>
+            </ul>
+          </article>
+          <article>
+            <h3>局限</h3>
+            <ul>
+              <li>容易只保证单个函数“语法正确”，忽略跨界面、数据库和状态机的整体行为。</li>
+              <li>缺少真实用户操作经验，可能遗漏“当前选中项没有变化”这类交互细节。</li>
+              <li>生成的阈值、算法或默认值看似合理，但未必经过数据验证。</li>
+              <li>如果开发者直接接受代码，错误会被完整、快速地扩散到业务流程中。</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="caution">
+          <h3>应谨慎使用 AI 生成代码的场景</h3>
+          <p>
+            身份认证、支付和财务计算、权限控制、隐私数据处理、文件删除、数据库迁移、并发任务、
+            医疗与安全关键系统，以及依赖复杂业务状态机的流程。此类场景必须进行人工审查、边界测试、
+            权限校验和真实数据验证，不能仅依据代码可编译就判断其正确。
+          </p>
+        </div>
+      </section>
+
+      <div class="verdict">
+        <p>
+          本次审查说明：AI 适合成为高效率的“代码协作者”，但最终的软件质量责任仍属于开发者。
+          对 AI 代码的正确使用方式不是直接复制，而是提出假设、检查数据、复现问题、实施最小修改并重新验证。
+        </p>
+      </div>
+    </main>
+
+    <footer>
+      <span>图像批处理工单审核系统 · AI Code Review</span>
+      <span>人工审查 / 修正 / 验证</span>
+    </footer>
+  </article>
+</body>
+</html>
